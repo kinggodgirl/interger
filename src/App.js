@@ -51,6 +51,17 @@ function App() {
     }
   });
 
+  const [selectedOperators, setSelectedOperators] = useState(() => {
+    const storedOperators = localStorage.getItem('mathQuizOperators');
+    return storedOperators ? JSON.parse(storedOperators) : ['+', '-', '*', '/'];
+  });
+  const [minNum, setMinNum] = useState(() => {
+    return parseInt(localStorage.getItem('mathQuizMinNum')) || -15;
+  });
+  const [maxNum, setMaxNum] = useState(() => {
+    return parseInt(localStorage.getItem('mathQuizMaxNum')) || 15;
+  });
+
   // Save states to localStorage whenever they change
   useEffect(() => {
     localStorage.setItem('mathQuizDifficulty', difficulty);
@@ -64,6 +75,18 @@ function App() {
     localStorage.setItem('mathQuizHighScores', JSON.stringify(highScores));
   }, [highScores]);
 
+  useEffect(() => {
+    localStorage.setItem('mathQuizOperators', JSON.stringify(selectedOperators));
+  }, [selectedOperators]);
+
+  useEffect(() => {
+    localStorage.setItem('mathQuizMinNum', minNum.toString());
+  }, [minNum]);
+
+  useEffect(() => {
+    localStorage.setItem('mathQuizMaxNum', maxNum.toString());
+  }, [maxNum]);
+
   const calculateCorrectAnswer = useCallback((n1, n2, op) => {
     switch (op) {
       case '+': return n1 + n2;
@@ -76,18 +99,20 @@ function App() {
 
   const generateProblem = useCallback(() => {
     const currentDifficulty = DIFFICULTY_LEVELS[difficulty];
-    const numRange = currentDifficulty.numRange;
     const maxTime = currentDifficulty.time;
 
-    const operators = ['+', '-', '*', '/'];
-    const op = operators[Math.floor(Math.random() * operators.length)];
-    let n1 = Math.floor(Math.random() * (numRange * 2 + 1)) - numRange;
-    let n2 = Math.floor(Math.random() * (numRange * 2 + 1)) - numRange;
+    // Use selectedOperators instead of fixed ones
+    const opsToUse = selectedOperators.length > 0 ? selectedOperators : ['+']; // Fallback to '+' if no operator is selected
+    const op = opsToUse[Math.floor(Math.random() * opsToUse.length)];
+
+    // Use minNum and maxNum for number generation
+    let n1 = Math.floor(Math.random() * (maxNum - minNum + 1)) + minNum;
+    let n2 = Math.floor(Math.random() * (maxNum - minNum + 1)) + minNum;
 
     if (op === '/') {
       while (n2 === 0 || n1 % n2 !== 0) {
-        n1 = Math.floor(Math.random() * (numRange * 2 + 1)) - numRange;
-        n2 = Math.floor(Math.random() * (numRange * 2 + 1)) - numRange;
+        n1 = Math.floor(Math.random() * (maxNum - minNum + 1)) + minNum;
+        n2 = Math.floor(Math.random() * (maxNum - minNum + 1)) + minNum;
       }
     }
 
@@ -100,7 +125,7 @@ function App() {
     setCorrectAnswer(calculateCorrectAnswer(n1, n2, op)); // Store correct answer
     setQuizState('playing'); // Reset quiz state
     setLastSubmissionWasCorrect(false); // Reset this state
-  }, [calculateCorrectAnswer, difficulty]);
+  }, [calculateCorrectAnswer, difficulty, selectedOperators, minNum, maxNum]);
 
   useEffect(() => {
     generateProblem();
@@ -192,6 +217,36 @@ function App() {
     generateProblem(); // Generate new problem with new difficulty
   };
 
+  const handleOperatorChange = (e) => {
+    const operator = e.target.value;
+    setSelectedOperators(prevOperators => {
+      if (prevOperators.includes(operator)) {
+        return prevOperators.filter(op => op !== operator);
+      } else {
+        return [...prevOperators, operator];
+      }
+    });
+    setScore(0); // Reset score on setting change
+    setQuizResults([]); // Clear results on setting change
+    generateProblem(); // Generate new problem with new settings
+  };
+
+  const handleMinNumChange = (e) => {
+    const value = parseInt(e.target.value);
+    setMinNum(isNaN(value) ? 0 : value);
+    setScore(0); // Reset score on setting change
+    setQuizResults([]); // Clear results on setting change
+    generateProblem(); // Generate new problem with new settings
+  };
+
+  const handleMaxNumChange = (e) => {
+    const value = parseInt(e.target.value);
+    setMaxNum(isNaN(value) ? 0 : value);
+    setScore(0); // Reset score on setting change
+    setQuizResults([]); // Clear results on setting change
+    generateProblem(); // Generate new problem with new settings
+  };
+
   const saveHighScore = async () => {
     const playerName = prompt("이름을 입력하세요:");
     if (playerName) {
@@ -260,6 +315,52 @@ function App() {
             <div className="form-check form-check-inline">
               <input className="form-check-input" type="radio" name="difficultyOptions" id="hard" value="hard" checked={difficulty === 'hard'} />
               <label className="form-check-label" htmlFor="hard">어려움</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card mb-4">
+        <div className="card-body">
+          <h5 className="card-title">퀴즈 맞춤 설정</h5>
+          <div className="mb-3">
+            <label className="form-label">연산자 선택:</label>
+            <div>
+              <div className="form-check form-check-inline">
+                <input className="form-check-input" type="checkbox" id="opPlus" value="+" checked={selectedOperators.includes('+')} onChange={handleOperatorChange} />
+                <label className="form-check-label" htmlFor="opPlus">+</label>
+              </div>
+              <div className="form-check form-check-inline">
+                <input className="form-check-input" type="checkbox" id="opMinus" value="-" checked={selectedOperators.includes('-')} onChange={handleOperatorChange} />
+                <label className="form-check-label" htmlFor="opMinus">-</label>
+              </div>
+              <div className="form-check form-check-inline">
+                <input className="form-check-input" type="checkbox" id="opMultiply" value="*" checked={selectedOperators.includes('*')} onChange={handleOperatorChange} />
+                <label className="form-check-label" htmlFor="opMultiply">*</label>
+              </div>
+              <div className="form-check form-check-inline">
+                <input className="form-check-input" type="checkbox" id="opDivide" value="/" checked={selectedOperators.includes('/')} onChange={handleOperatorChange} />
+                <label className="form-check-label" htmlFor="opDivide">÷</label>
+              </div>
+            </div>
+          </div>
+          <div className="mb-3">
+            <label className="form-label">숫자 범위:</label>
+            <div className="d-flex">
+              <input
+                type="number"
+                className="form-control me-2"
+                value={minNum}
+                onChange={handleMinNumChange}
+                placeholder="최소값"
+              />
+              <input
+                type="number"
+                className="form-control"
+                value={maxNum}
+                onChange={handleMaxNumChange}
+                placeholder="최대값"
+              />
             </div>
           </div>
         </div>
