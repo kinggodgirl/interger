@@ -1,7 +1,4 @@
-const fs = require('fs');
-const path = require('path');
-
-const SCORES_FILE = path.join(__dirname, '..', '..', 'scores.json'); // Adjust path to project root
+const { Client } = require('pg');
 
 exports.handler = async (event, context) => {
   if (event.httpMethod !== 'POST') {
@@ -11,23 +8,24 @@ exports.handler = async (event, context) => {
     };
   }
 
+  const client = new Client({
+    connectionString: process.env.DATABASE_URL, // Use environment variable
+    ssl: {
+      rejectUnauthorized: false, // Required for Neon's SSL
+    },
+  });
+
   try {
-    const newScore = JSON.parse(event.body);
-    let scores = [];
+    const { name, score, date } = JSON.parse(event.body);
+    await client.connect();
+    await client.query('INSERT INTO high_scores(name, score, date) VALUES($1, $2, $3)', [name, score, date]);
 
-    if (fs.existsSync(SCORES_FILE)) {
-      const data = fs.readFileSync(SCORES_FILE, 'utf8');
-      scores = JSON.parse(data);
-    }
-
-    scores.push(newScore);
-    const updatedScores = scores.sort((a, b) => b.score - a.score).slice(0, 10);
-
-    fs.writeFileSync(SCORES_FILE, JSON.stringify(updatedScores, null, 2));
+    // Optionally, you can fetch and return the top 10 scores after adding
+    const res = await client.query('SELECT name, score, date FROM high_scores ORDER BY score DESC LIMIT 10');
 
     return {
       statusCode: 201,
-      body: JSON.stringify(newScore),
+      body: JSON.stringify(res.rows),
     };
   } catch (error) {
     console.error('Error adding score:', error);
@@ -35,5 +33,7 @@ exports.handler = async (event, context) => {
       statusCode: 500,
       body: JSON.stringify({ error: 'Failed to add score' }),
     };
+  } finally {
+    await client.end();
   }
 };
