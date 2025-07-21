@@ -192,19 +192,49 @@ function App() {
     generateProblem(); // Generate new problem with new difficulty
   };
 
-  const saveHighScore = () => {
+  const saveHighScore = async () => {
     const playerName = prompt("이름을 입력하세요:");
     if (playerName) {
       const newHighScore = { name: playerName, score: score, date: new Date().toLocaleDateString() };
-      setHighScores(prevScores => {
-        const updatedScores = [...prevScores, newHighScore]
-          .sort((a, b) => b.score - a.score) // Sort by score descending
-          .slice(0, 10); // Keep top 10
-        return updatedScores;
-      });
-      alert(`최고 점수가 저장되었습니다: ${playerName} - ${score}점`);
+      try {
+        const response = await fetch('/.netlify/functions/add-score', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(newHighScore),
+        });
+        if (response.ok) {
+          alert(`최고 점수가 저장되었습니다: ${playerName} - ${score}점`);
+          // Re-fetch high scores to update the list
+          fetchHighScores();
+        } else {
+          alert('최고 점수 저장에 실패했습니다.');
+        }
+      } catch (error) {
+        console.error('Error saving high score:', error);
+        alert('최고 점수 저장 중 오류가 발생했습니다.');
+      }
     }
   };
+
+  const fetchHighScores = useCallback(async () => {
+    try {
+      const response = await fetch('/.netlify/functions/get-scores');
+      if (response.ok) {
+        const data = await response.json();
+        setHighScores(data);
+      } else {
+        console.error('Failed to fetch high scores');
+      }
+    } catch (error) {
+      console.error('Error fetching high scores:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchHighScores();
+  }, [fetchHighScores]);
 
   // Calculate statistics
   const totalQuestions = quizResults.length;
