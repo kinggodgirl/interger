@@ -13,6 +13,20 @@ function App() {
   const [score, setScore] = useState(0);
   const [remainingTime, setRemainingTime] = useState(MAX_TIME);
   const timerRef = useRef(null);
+  const inputRef = useRef(null); // Ref for the input field
+  const [correctAnswer, setCorrectAnswer] = useState(0); // New state for correct answer
+  const [quizState, setQuizState] = useState('playing'); // New state: 'playing', 'feedback'
+  const [lastSubmissionWasCorrect, setLastSubmissionWasCorrect] = useState(false); // New state
+
+  const calculateCorrectAnswer = useCallback((n1, n2, op) => {
+    switch (op) {
+      case '+': return n1 + n2;
+      case '-': return n1 - n2;
+      case '*': return n1 * n2;
+      case '/': return Math.round(n1 / n2); // Assuming integer division for quiz
+      default: return 0;
+    }
+  }, []);
 
   const generateProblem = useCallback(() => {
     const operators = ['+', '-', '*', '/'];
@@ -33,54 +47,69 @@ function App() {
     setAnswer('');
     setMessage('');
     setRemainingTime(MAX_TIME);
-  }, []);
+    setCorrectAnswer(calculateCorrectAnswer(n1, n2, op)); // Store correct answer
+    setQuizState('playing'); // Reset quiz state
+    setLastSubmissionWasCorrect(false); // Reset this state
+  }, [calculateCorrectAnswer]);
 
   useEffect(() => {
     generateProblem();
   }, [generateProblem]);
 
   useEffect(() => {
-    if (remainingTime > 0) {
-      timerRef.current = setTimeout(() => {
-        setRemainingTime(remainingTime - 1);
-      }, 1000);
-    } else {
-      setMessage('시간 초과! 다음 문제로 넘어갑니다.');
-      setTimeout(generateProblem, 1000);
+    if (quizState === 'playing') { // Only run timer if quiz is in playing state
+      if (remainingTime > 0) {
+        timerRef.current = setTimeout(() => {
+          setRemainingTime(remainingTime - 1);
+        }, 1000);
+      } else { // remainingTime is 0 and quizState is playing
+        setMessage('시간 초과!');
+        clearTimeout(timerRef.current); // Stop the timer
+        // Do NOT change quizState here, allow user to still answer
+      }
     }
-
     return () => clearTimeout(timerRef.current);
-  }, [remainingTime, generateProblem]);
+  }, [remainingTime, quizState]);
+
+  useEffect(() => {
+    if (quizState === 'playing' && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [quizState]);
 
   const checkAnswer = (e) => {
     e.preventDefault();
-    let correctAnswer;
-    switch (operator) {
-      case '+':
-        correctAnswer = num1 + num2;
-        break;
-      case '-':
-        correctAnswer = num1 - num2;
-        break;
-      case '*':
-        correctAnswer = num1 * num2;
-        break;
-      case '/':
-        correctAnswer = Math.round(num1 / num2);
-        break;
-      default:
-        break;
-    }
+    // Allow submission even if time is up, but disable if already in feedback state
+    if (quizState === 'feedback') return;
 
-    if (parseInt(answer) === correctAnswer) {
+    let currentPoints = 0;
+    const isCorrect = (parseInt(answer) === correctAnswer);
+
+    if (isCorrect) {
       clearTimeout(timerRef.current);
-      const points = Math.max(1, remainingTime);
-      setMessage(`정답입니다! (+${points}점)`);
-      setScore(score + points);
-      setTimeout(generateProblem, 1000);
+      if (remainingTime > 0) { // Only award points if answered within time
+        currentPoints = Math.max(1, remainingTime);
+        setMessage(`정답입니다! (+${currentPoints}점)`);
+      } else { // Answered correctly after time up
+        currentPoints = 1; // Award 1 point for correct answer after time up
+        setMessage(`정답입니다! (시간 초과 후 +${currentPoints}점)`);
+      }
+      setScore(prevScore => prevScore + currentPoints);
+      setLastSubmissionWasCorrect(true); // Set to true for correct answer
+      setQuizState('feedback'); // Set state to feedback to show message and disable input
+      setTimeout(() => {
+        generateProblem(); // Move to next problem after a short delay
+      }, 1000); // 1 second delay to show score message
     } else {
-      setMessage(`오답입니다. 정답은 ${correctAnswer} 입니다.`);
+      setMessage(`오답입니다. 정답은 ${correctAnswer} 입니다.`); // Show correct answer on incorrect submission
+      setLastSubmissionWasCorrect(false); // Set to false for incorrect answer
+      setQuizState('feedback'); // Set state to feedback
+      clearTimeout(timerRef.current);
     }
+  };
+
+  const handleNextProblem = () => {
+    generateProblem();
   };
 
   return (
@@ -90,28 +119,43 @@ function App() {
         <div className="card-body">
           <div className="mb-3">
             <span>남은 시간: {remainingTime}초</span>
-            <ProgressBar 
-              now={(remainingTime / MAX_TIME) * 100} 
-              variant={remainingTime > 5 ? 'success' : remainingTime > 2 ? 'warning' : 'danger'} 
+            <ProgressBar
+              now={(remainingTime / MAX_TIME) * 100}
+              variant={remainingTime > 5 ? 'success' : remainingTime > 2 ? 'warning' : 'danger'}
             />
           </div>
           <h2 className="card-title">문제: {num1} {operator === '/' ? '÷' : operator} {num2 < 0 ? `(${num2})` : num2}</h2>
           <form onSubmit={checkAnswer}>
             <div className="form-group">
               <input
-                type="number"
+                type="text"
+                inputmode="numeric"
                 className="form-control"
                 value={answer}
                 onChange={(e) => setAnswer(e.target.value)}
                 placeholder="정답을 입력하세요"
-                autoFocus
+                ref={inputRef} // Attach ref to the input field
+                disabled={quizState === 'feedback'} // Disable input when feedback is shown
               />
             </div>
-            <button type="submit" className="btn btn-primary mt-3">
+            <button
+              type="submit"
+              className="btn btn-primary mt-3"
+              disabled={quizState === 'feedback'} // Disable submit button when feedback is shown
+            >
               제출
             </button>
           </form>
           {message && <p className="mt-3">{message}</p>}
+          {quizState === 'feedback' && !lastSubmissionWasCorrect ? ( // Show next problem button only when feedback is shown and it was NOT a correct submission
+            <button
+              type="button"
+              className="btn btn-secondary mt-3"
+              onClick={handleNextProblem}
+            >
+              다음 문제
+            </button>
+          ) : null}
           <p className="mt-3">점수: {score}</p>
         </div>
       </div>
